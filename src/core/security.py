@@ -26,6 +26,16 @@ class RefreshTokenData:
     expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class DecodedAccessToken:
+    user_id: UUID
+    project_id: UUID | None
+    is_owner: bool
+    role: ProjectRole | None
+    permissions: frozenset[Permissions]
+    policies: Mapping[Permissions, tuple[Policies, ...]]
+
+
 @dataclass(frozen=True)
 class DecodedRefreshPayload:
     jti: UUID
@@ -65,25 +75,33 @@ def create_access_token(
         is_owner: bool = False,
         role: ProjectRole | None = None,
         permissions: frozenset[Permissions] = frozenset(),
-        policies: Mapping[Permissions, tuple[Policies, ...]] | None = None,
+        policies: Mapping[Permissions, tuple[Policies, ...]] | None = None, # порядок сохраняется
     ) -> str:
-    expires_at = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
-    
+
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=settings.access_token_expire_minutes)
+    policies = policies or {} # or возвращает 1ый truthly операнд, а так проверяется пустой словарь/список
+
     payload = {
         "sub": str(user_id), 
-        "exp": expires_at,
         "type": TokenType.ACCESS.value,
         "project_id": str(project_id) if project_id else None,
 
         "is_owner": is_owner,
         "role": role.value if role else None,
 
-        # не дописал
+        "permissions": [permission.value for permission in permissions],
+
+        "policies": {
+            permission.value: [policie.value for policie in permission_policies] # json хранит массивы как список
+            for permission, permission_policies in policies.items()
+        },
+
+        "iat": now,
+        "exp": expires_at,
     }
 # pyjwt сам преобразует datetime в JWT NumericDate — Unix timestamp
-# То есть ты передаёшь:
-# datetime
-# а внутри JWT оно станет числом:
+# То есть datetime внутри JWT станет числом:
 # "exp": 1234567890
 
     return jwt.encode(
@@ -93,13 +111,13 @@ def create_access_token(
     )
 
 
-def decode_access_token(token: str) -> UUID: # не переделал
+def decode_access_token(token: str) -> DecodedAccessToken: 
     try:
         payload = jwt.decode(
             token,
             settings.secret_key,
             algorithms=[settings.algorithm],
-            options={"require": ["exp", "sub", "type"]},
+            options={"require": ["exp", "sub", "type", "project_id", "is_owner", "role", "permisions", "policies"]},
         ) # токен подписан известным ключом, но не гарантирует, что sub не скомпрометирован
 
         token_type = payload.get("type") 
@@ -110,7 +128,40 @@ def decode_access_token(token: str) -> UUID: # не переделал
         if subject is None or not isinstance(subject, str):
             raise InvalidJWT()
 
-        return UUID(subject)
+        project_id = payload.get("project_id")
+        if project_id is not None and not isinstance(project_id, str):
+            raise InvalidJWT()
+
+        is_owner = payload.get("is_owner")
+        if not isinstance(is_owner, bool):
+            raise InvalidJWT()
+
+        role = payload.get("role")
+        if role is not None and not isinstance(role, str):
+            raise InvalidJWT()
+        
+        permissions = payload.get("permissions")
+        if not isinstance(permissions, list):
+            raise InvalidJWT()
+        
+        policies = payload.get("policies")
+        if not isinstance(policies, dict):
+            raise InvalidJWT()
+
+        return DecodedAccessToken(
+            user_id=UUID(subject),
+            project_id=UUID(project_id) if project_id else None,
+            is_owner=is_owner,
+            role=ProjectRole(role) if role else None,
+            permissions=frozenset({
+                Permissions(permission) for permission in permissions
+                },
+            ),
+            policies={
+                Permissions(permission): tuple(Policies(pol) for pol in policie) for
+                permission, policie in policies.items()
+            },
+        )
 
     except (InvalidTokenError, ValueError):
         raise InvalidJWT() 
