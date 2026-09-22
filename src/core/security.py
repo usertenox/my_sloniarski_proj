@@ -3,12 +3,16 @@ from typing import NoReturn
 import hmac
 import hashlib
 from pwdlib import PasswordHash
+from collections.abc import Mapping
 
 import jwt
 from jwt.exceptions import InvalidTokenError
 
 from src.core.config import settings
 from src.utils.errors import InvalidCredentials, InvalidJWT
+from src.core.enums import ProjectRole
+from src.core.access.permissions import Permissions
+from src.core.access.policies import Policies
 
 from uuid import UUID, uuid4
 from enum import StrEnum
@@ -55,13 +59,26 @@ def verify_dummy_password(password: str) -> NoReturn:
     raise InvalidCredentials()
 
 
-def create_access_token(user_id: UUID) -> str:
+def create_access_token(
+        user_id: UUID,
+        project_id: UUID | None = None,
+        is_owner: bool = False,
+        role: ProjectRole | None = None,
+        permissions: frozenset[Permissions] = frozenset(),
+        policies: Mapping[Permissions, tuple[Policies, ...]] | None = None,
+    ) -> str:
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     
     payload = {
         "sub": str(user_id), 
         "exp": expires_at,
         "type": TokenType.ACCESS.value,
+        "project_id": str(project_id) if project_id else None,
+
+        "is_owner": is_owner,
+        "role": role.value if role else None,
+
+        # не дописал
     }
 # pyjwt сам преобразует datetime в JWT NumericDate — Unix timestamp
 # То есть ты передаёшь:
@@ -76,7 +93,7 @@ def create_access_token(user_id: UUID) -> str:
     )
 
 
-def decode_access_token(token: str) -> UUID:
+def decode_access_token(token: str) -> UUID: # не переделал
     try:
         payload = jwt.decode(
             token,

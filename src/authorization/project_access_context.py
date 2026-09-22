@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from src.authorization.context import ProjectAccessContext
+from src.core.access.context import ProjectAccessContext
 from src.models.project import Project
 from src.repositories.project_member_repo import ProjectMemberRepo
 

@@ -1,7 +1,7 @@
 
 
-from src.authorization.context import ProjectAccessContext
-from src.authorization.permissions import Permission
+from src.core.access.context import ProjectAccessContext
+from src.core.access.permissions import Permission
 from src.authorization.decision import AuthorizationDecision
 from src.authorization.scopes import ProjectScope
 from src.utils.errors import AccessDenied

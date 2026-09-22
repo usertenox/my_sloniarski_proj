@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class Permission(StrEnum):
+class Permissions(StrEnum):
     PROJECT_READ = "project.read"
     PROJECT_UPDATE = "project.update"
     PROJECT_DELETE = "project.delete"

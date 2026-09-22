@@ -1,4 +1,4 @@
-from src.authorization.permissions import Permission
+from src.core.access.permissions import Permission
 from src.core.enums import ProjectRole
 
 
